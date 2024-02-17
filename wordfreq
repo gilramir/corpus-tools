@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+
+from argparse import ArgumentParser
+from collections import namedtuple
+import concurrent.futures
+import multiprocessing
+import sys
+
+# https://github.com/PyThaiNLP/pythainlp
+from pythainlp.tokenize import word_tokenize
+
+# The Set of Thai words to ignore
+words_to_ignore = {
+    "มาเรีย",
+}
+
+# This is the complete range. Some code points are not yet assigned.
+FIRST_THAI_UNICODE_CODEPOINT = "\u0e00"
+LAST_THAI_UNICODE_CODEPOINT = "\u0e7f"
+
+def is_string_pure_thai_unicode(text):
+    if text == "":
+        return False
+    for cp in text:
+        if cp < FIRST_THAI_UNICODE_CODEPOINT:
+            return False
+        if cp > LAST_THAI_UNICODE_CODEPOINT:
+            return False
+    return True
+
+WordCount = namedtuple("WordCount", ("word", "count"))
+
+class WordHistogram:
+
+    def __init__(s):
+        # Key = word, Value = # of instances
+        s.word_counts = {}
+
+        s.num_word_instances = 0
+
+    def merge(s, other):
+        for word, other_count in other.word_counts.items():
+            my_count = s.word_counts.get(word, 0)
+            s.word_counts[word] = my_count + other_count
+        s.num_word_instances += other.num_word_instances
+
+    def num_unique_words(s):
+        return len(s.word_counts)
+
+    def num_word_instances(s):
+        return s.num_word_instances
+
+    def get_word_counts(s):
+        counts = []
+        for word, count in s.word_counts.items():
+            wc = WordCount(word, count)
+            counts.append(wc)
+
+        # Sort on count first, then word, so that words with the
+        # same count will themselves be sorted alphabetically
+        sorted_counts = sorted(counts, key=lambda x: (x.count, x.word),
+            reverse=True)
+
+        return sorted_counts
+
+
+
+def process_file(filename, histo):
+    print("Reading", filename, file=sys.stderr)
+    with open(filename) as fh:
+        for line in fh:
+            line = line.strip()
+            if line == "":
+                continue
+            words = word_tokenize(line)
+            thai_words = [w for w in words if is_string_pure_thai_unicode(w)]
+#            print(line)
+#            print(thai_words)
+            for word in thai_words:
+                if word in words_to_ignore:
+                    continue
+                count = histo.word_counts.get(word, 0)
+                histo.word_counts[word] = count + 1
+                histo.num_word_instances += 1
+
+def make_histo(filename):
+    histo = WordHistogram()
+    process_file(filename, histo)
+    return histo
+
+def run(filenames):
+    histo = WordHistogram()
+
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=multiprocessing.cpu_count()) as executor:
+        for new_histo in executor.map(make_histo, filenames):
+            histo.merge(new_histo)
+
+#    for filename in filenames:
+#        process_file(filename, histo)
+
+    print("Input files:", len(filenames))
+    print("Instances of Thai words:", histo.num_word_instances)
+    print("Unique Thai words:", histo.num_unique_words())
+    print()
+
+    word_counts = histo.get_word_counts()
+    for i, wc in enumerate(word_counts, 1):
+        print(f"#{i}. [{wc.count}]\t{wc.word}")
+        print()
+
+
+def main():
+    parser = ArgumentParser()
+
+    parser.add_argument("filenames",
+        nargs="+",
+        help="Files to parse")
+
+    args = parser.parse_args()
+
+    run(args.filenames)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BrokenPipeError:
+        pass

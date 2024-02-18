@@ -11,12 +11,19 @@ from pythainlp.tokenize import word_tokenize
 
 # The Set of Thai words to ignore
 words_to_ignore = {
-    "มาเรีย",
+    'ปัด',
+    'มาเรีย',
 }
 
 # This is the complete range. Some code points are not yet assigned.
 FIRST_THAI_UNICODE_CODEPOINT = "\u0e00"
 LAST_THAI_UNICODE_CODEPOINT = "\u0e7f"
+
+FIX_PAIRS = (
+    # ( Mistake ), ( Correct)
+    ( ('บอ', 'กว่า'), ('บอก', 'ว่า') ),
+    ( ('มีปัญหา', ), ('มี', 'ปัญหา') ),
+)
 
 def is_string_pure_thai_unicode(text):
     if text == "":
@@ -76,12 +83,44 @@ def process_file(filename, histo):
             thai_words = [w for w in words if is_string_pure_thai_unicode(w)]
 #            print(line)
 #            print(thai_words)
+
+            # Fix mistakes
+            for fix_pair in FIX_PAIRS:
+                incorrect, correct = fix_pair
+                num_input = len(incorrect)
+                i = 0
+                while i < len(thai_words) - num_input + 1:
+                    j = 0
+                    match = True
+                    while j < len(incorrect):
+                        if thai_words[i+j] != incorrect[j]:
+                            match = False
+                            break
+                        j += 1
+                    if match:
+                        lhs = thai_words[:i]
+                        rhs = thai_words[i+len(incorrect):]
+                        new_thai_words = lhs + list(correct) + rhs
+                        if False and 'มีปัญหา' in incorrect:
+                            print(f"Changed {thai_words} to {new_thai_words}", file=sys.stderr)
+                        thai_words = new_thai_words
+                        i += len(correct)
+                    else:
+                        i += 1
+
+
             for word in thai_words:
                 if word in words_to_ignore:
                     continue
                 count = histo.word_counts.get(word, 0)
                 histo.word_counts[word] = count + 1
                 histo.num_word_instances += 1
+
+                # Debugging
+                if False and word == "บอ":
+                    print(f"{filename}: {line}", file=sys.stderr)
+                    print(thai_words, file=sys.stderr)
+                    print("", file=sys.stderr)
 
 def make_histo(filename):
     histo = WordHistogram()

@@ -26,12 +26,15 @@ FIX_PAIRS = (
 )
 
 def is_string_pure_thai_unicode(text):
-    if text == "":
+    has_thai = False
+    if text in ("", " ", "\t", "\n"):
         return False
     for cp in text:
         if cp < FIRST_THAI_UNICODE_CODEPOINT:
+#            print(f"Not thai: ({text})", file=sys.stderr)
             return False
         if cp > LAST_THAI_UNICODE_CODEPOINT:
+#            print(f"Not thai: ({text})", file=sys.stderr)
             return False
     return True
 
@@ -75,42 +78,48 @@ class WordHistogram:
 def process_file(filename, histo):
     print("Reading", filename, file=sys.stderr)
     with open(filename) as fh:
-        for line in fh:
-            line = line.strip()
-            if line == "":
-                continue
-            words = word_tokenize(line)
+        data = fh.read()
+        if True:
+#        for line in fh:
+#            line = line.strip()
+#            if line == "":
+#                continue
+            words = word_tokenize(data, engine="attacut")
+            # Get rid of whitespace
+            words = [w.strip() for w in words]
             thai_words = [w for w in words if is_string_pure_thai_unicode(w)]
 #            print(line)
 #            print(thai_words)
 
             # Fix mistakes
-            for fix_pair in FIX_PAIRS:
-                incorrect, correct = fix_pair
-                num_input = len(incorrect)
-                i = 0
-                while i < len(thai_words) - num_input + 1:
-                    j = 0
-                    match = True
-                    while j < len(incorrect):
-                        if thai_words[i+j] != incorrect[j]:
-                            match = False
-                            break
-                        j += 1
-                    if match:
-                        lhs = thai_words[:i]
-                        rhs = thai_words[i+len(incorrect):]
-                        new_thai_words = lhs + list(correct) + rhs
-                        if False and 'มีปัญหา' in incorrect:
-                            print(f"Changed {thai_words} to {new_thai_words}", file=sys.stderr)
-                        thai_words = new_thai_words
-                        i += len(correct)
-                    else:
-                        i += 1
+            if False:
+                for fix_pair in FIX_PAIRS:
+                    incorrect, correct = fix_pair
+                    num_input = len(incorrect)
+                    i = 0
+                    while i < len(thai_words) - num_input + 1:
+                        j = 0
+                        match = True
+                        while j < len(incorrect):
+                            if thai_words[i+j] != incorrect[j]:
+                                match = False
+                                break
+                            j += 1
+                        if match:
+                            lhs = thai_words[:i]
+                            rhs = thai_words[i+len(incorrect):]
+                            new_thai_words = lhs + list(correct) + rhs
+                            if False and 'มีปัญหา' in incorrect:
+                                print(f"Changed {thai_words} to {new_thai_words}", file=sys.stderr)
+                            thai_words = new_thai_words
+                            i += len(correct)
+                        else:
+                            i += 1
 
-
+            # Collate the thai words
             for word in thai_words:
                 if word in words_to_ignore:
+                    print(f"Ignoring: {word}", file=sys.stderr)
                     continue
                 count = histo.word_counts.get(word, 0)
                 histo.word_counts[word] = count + 1
